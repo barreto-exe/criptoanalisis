@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using WeCantSpell.Hunspell;
 
 class CriptoanalizadorMonoalfabetico
 {
@@ -36,6 +37,63 @@ class CriptoanalizadorMonoalfabetico
         return textoDescifrado.ToString();
     }
 
+    static WordList CargarDiccionarioEspanol(string rutaAff, string rutaDic)
+    {
+        try
+        {
+            return WordList.CreateFromFiles(rutaDic);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar el diccionario: {ex.Message}");
+            return null;
+        }
+    }
+
+    static bool TextoEsValido(string texto, WordList diccionario)
+    {
+        if (diccionario == null) return false;
+
+        string[] palabras = texto.Split(new char[] { ' ', ',', '.', ';', ':' }, StringSplitOptions.RemoveEmptyEntries);
+        bool check = palabras.All(palabra => diccionario.Check(palabra.ToLower())); // Convertir a minúsculas antes de verificar
+        return check;
+    }
+
+    static Dictionary<char, char> OptimizarMapeo(string textoCifrado, Dictionary<char, int> frecuencias, WordList diccionario)
+    {
+        var mapeo = GenerarMapeoAutomatico(frecuencias); // Mapeo inicial basado en frecuencias
+        string mejorTexto = SustituirLetras(textoCifrado, mapeo);
+
+        bool mejoraEncontrada;
+        do
+        {
+            mejoraEncontrada = false;
+            foreach (var par in mapeo.ToList()) // Iterar sobre una copia para poder modificar el original
+            {
+                foreach (char nuevaLetra in "abcdefghijklmnopqrstuvwxyzñ") // Probar todas las letras
+                {
+                    if (nuevaLetra != par.Value) // Evitar asignar la misma letra
+                    {
+                        var nuevoMapeo = new Dictionary<char, char>(mapeo);
+                        nuevoMapeo[par.Key] = nuevaLetra;
+                        string nuevoTexto = SustituirLetras(textoCifrado, nuevoMapeo);
+
+                        // Verificar si el nuevo texto es válido y más largo que el mejor hasta ahora
+                        if (TextoEsValido(nuevoTexto, diccionario) && nuevoTexto.Length > mejorTexto.Length)
+                        {
+                            mapeo = nuevoMapeo;
+                            mejorTexto = nuevoTexto;
+                            mejoraEncontrada = true;
+                            break; // Pasar a la siguiente letra cifrada
+                        }
+                    }
+                }
+            }
+        } while (mejoraEncontrada); // Repetir hasta que no se encuentren más mejoras
+
+        return mapeo;
+    }
+
     static Dictionary<char, char> GenerarMapeoAutomatico(Dictionary<char, int> frecuencias)
     {
         // Frecuencias típicas del español (aproximadas y en orden descendente)
@@ -57,35 +115,27 @@ class CriptoanalizadorMonoalfabetico
 
     static void Main()
     {
-        string textoCifrado = "TATIG NK KTIUTZXGJU ATG VKXYUTG ZGT OMTUXGTZK WAK TU YK VAKJG GVXKTJKX TGJG JK KRRG"; // Ejemplo de texto cifrado
+        string textoCifrado = "TATIG NK KTIUTZXGJU ATG VKXYUTG ZGT OMTUXGTZK WAK TU YK VAKJG GVXKTJKX TGJG JK KRRG";
         var frecuencias = AnalizarFrecuencias(textoCifrado);
 
         // Imprimir frecuencias
         Console.WriteLine("Frecuencias de letras:");
-        foreach (var par in frecuencias.OrderByDescending(x => x.Value)) // Ordenar por frecuencia descendente
+        foreach (var par in frecuencias.OrderByDescending(x => x.Value))
         {
             Console.WriteLine($"{par.Key}: {par.Value}");
         }
         Console.WriteLine();
 
-        // Aquí debes crear el mapeo (puedes usar frecuencias del español)
-        // Por ejemplo: mapeo['z'] = 'e', mapeo['p'] = 'l', ...
+        string rutaAff = "es_ES.aff"; // Asegúrate de tener estos archivos en la misma carpeta
+        string rutaDic = "es_ES.dic";
 
-        //var mapeo = new Dictionary<char, char>
-        //{
-        //    { 'z', 'e' },
-        //    { 'p', 'l' },
-        //    { 'v', 'a' },
-        //    { 'b', 'h' },
-        //    { 's', 'o' },
-        //    { 'f', 's' },
-        //    { 't', 'r' },
-        //    { 'd', 'u' }
-        //}; 
+        WordList diccionario = CargarDiccionarioEspanol(rutaAff, rutaDic);
 
-        var mapeo = GenerarMapeoAutomatico(frecuencias);
-
-        string textoDescifrado = SustituirLetras(textoCifrado, mapeo);
-        Console.WriteLine("Texto descifrado: " + textoDescifrado);
+        if (diccionario != null)
+        {
+            var mapeo = OptimizarMapeo(textoCifrado, frecuencias, diccionario);
+            string textoDescifrado = SustituirLetras(textoCifrado, mapeo);
+            Console.WriteLine("Texto descifrado: " + textoDescifrado);
+        }
     }
 }

@@ -5,6 +5,8 @@ using WeCantSpell.Hunspell;
 
 class CriptoanalizadorMonoalfabetico
 {
+    static string? FrecuenciaString { get; set; }
+
     static Dictionary<char, int> AnalizarFrecuencias(string textoCifrado)
     {
         var frecuencias = new Dictionary<char, int>();
@@ -54,6 +56,9 @@ class CriptoanalizadorMonoalfabetico
     {
         if (diccionario == null) return false;
 
+        //Console.WriteLine(texto);
+        Imprimir(texto);
+
         string[] palabras = texto.Split(new char[] { ' ', ',', '.', ';', ':' }, StringSplitOptions.RemoveEmptyEntries);
         bool check = palabras.All(palabra => diccionario.Check(palabra.ToLower())); // Convertir a minúsculas antes de verificar
         return check;
@@ -61,37 +66,62 @@ class CriptoanalizadorMonoalfabetico
 
     static Dictionary<char, char> OptimizarMapeo(string textoCifrado, Dictionary<char, int> frecuencias, WordList diccionario)
     {
-        var mapeo = GenerarMapeoAutomatico(frecuencias); // Mapeo inicial basado en frecuencias
-        string mejorTexto = SustituirLetras(textoCifrado, mapeo);
+        var mapeo = GenerarMapeoAutomatico(frecuencias);
+        var letrasBloqueadas = new HashSet<char>(); // Conjunto para letras bloqueadas
 
-        bool mejoraEncontrada;
-        do
+        // Función recursiva para explorar combinaciones
+        bool ExplorarCombinaciones(Dictionary<char, char> mapeoActual, int indiceLetra)
         {
-            mejoraEncontrada = false;
-            foreach (var par in mapeo.ToList()) // Iterar sobre una copia para poder modificar el original
+            if (indiceLetra == mapeoActual.Count)
             {
-                foreach (char nuevaLetra in "abcdefghijklmnopqrstuvwxyzñ") // Probar todas las letras
-                {
-                    if (nuevaLetra != par.Value) // Evitar asignar la misma letra
-                    {
-                        var nuevoMapeo = new Dictionary<char, char>(mapeo);
-                        nuevoMapeo[par.Key] = nuevaLetra;
-                        string nuevoTexto = SustituirLetras(textoCifrado, nuevoMapeo);
+                string textoDescifrado = SustituirLetras(textoCifrado, mapeoActual);
+                return TextoEsValido(textoDescifrado, diccionario); // Todas las palabras válidas
+            }
 
-                        // Verificar si el nuevo texto es válido y más largo que el mejor hasta ahora
-                        if (TextoEsValido(nuevoTexto, diccionario) && nuevoTexto.Length > mejorTexto.Length)
+            char letraCifrada = mapeoActual.Keys.ElementAt(indiceLetra);
+            if (letrasBloqueadas.Contains(letraCifrada))
+                return ExplorarCombinaciones(mapeoActual, indiceLetra + 1); // Saltar letra bloqueada
+
+            foreach (char nuevaLetra in "abcdefghijklmnopqrstuvwxyzñ")
+            {
+                if (nuevaLetra != mapeoActual[letraCifrada] && !mapeoActual.Values.Contains(nuevaLetra))
+                {
+                    var nuevoMapeo = new Dictionary<char, char>(mapeoActual);
+                    nuevoMapeo[letraCifrada] = nuevaLetra;
+
+                    string textoDescifrado = SustituirLetras(textoCifrado, nuevoMapeo);
+                    if (TextoEsValido(textoDescifrado, diccionario))
+                    {
+                        // Bloquear letras de palabras válidas
+                        foreach (var palabra in textoDescifrado.Split(new char[] { ' ', ',', '.', ';', ':' }, StringSplitOptions.RemoveEmptyEntries))
                         {
-                            mapeo = nuevoMapeo;
-                            mejorTexto = nuevoTexto;
-                            mejoraEncontrada = true;
-                            break; // Pasar a la siguiente letra cifrada
+                            if (diccionario.Check(palabra.ToLower()))
+                                foreach (var letra in palabra)
+                                    letrasBloqueadas.Add(letra);
                         }
+
+                        mapeo = nuevoMapeo; // Actualizar el mejor mapeo
+                        return true; // Éxito, no es necesario seguir explorando
                     }
+                    else if (ExplorarCombinaciones(nuevoMapeo, indiceLetra + 1))
+                        return true; // Éxito en una rama más profunda
                 }
             }
-        } while (mejoraEncontrada); // Repetir hasta que no se encuentren más mejoras
 
+            return false; // No se encontró solución en esta rama
+        }
+
+        ExplorarCombinaciones(mapeo, 0); // Iniciar la exploración recursiva
         return mapeo;
+    }
+
+    static void Imprimir(string texto)
+    {
+        Thread.Sleep(1);
+        Console.SetCursorPosition(0, Console.CursorTop - 1);
+        Console.Write(new string(' ', Console.WindowWidth));
+        Console.SetCursorPosition(0, Console.CursorTop);
+        Console.WriteLine(texto);
     }
 
     static Dictionary<char, char> GenerarMapeoAutomatico(Dictionary<char, int> frecuencias)
@@ -115,16 +145,18 @@ class CriptoanalizadorMonoalfabetico
 
     static void Main()
     {
-        string textoCifrado = "TATIG NK KTIUTZXGJU ATG VKXYUTG ZGT OMTUXGTZK WAK TU YK VAKJG GVXKTJKX TGJG JK KRRG";
-        var frecuencias = AnalizarFrecuencias(textoCifrado);
+        //string textoCifrado = "TATIG NK KTIUTZXGJU ATG VKXYUTG ZGT OMTUXGTZK WAK TU YK VAKJG GVXKTJKX TGJG JK KRRG";
+        string textoCifrado = "TATIG";
+        var frecuencias = AnalizarFrecuencias(textoCifrado.ToLower());
 
-        // Imprimir frecuencias
-        Console.WriteLine("Frecuencias de letras:");
+        // Variable global frecuencias
+        FrecuenciaString = "Frecuencias de letras: \n";
         foreach (var par in frecuencias.OrderByDescending(x => x.Value))
         {
-            Console.WriteLine($"{par.Key}: {par.Value}");
+            FrecuenciaString += $"{par.Key}: {par.Value} \n";
         }
-        Console.WriteLine();
+        FrecuenciaString += "\n";
+        Console.WriteLine(FrecuenciaString);
 
         string rutaAff = "es_ES.aff"; // Asegúrate de tener estos archivos en la misma carpeta
         string rutaDic = "es_ES.dic";
